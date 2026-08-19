@@ -11,6 +11,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   ArrowUp,
+  ArrowDown,
   Check,
   ChevronDown,
   CircleAlert,
@@ -34,6 +35,9 @@ import {
   RefreshCw,
   Palette,
   Command,
+  Monitor,
+  Share2,
+  Clock3,
 } from "lucide-react";
 import * as api from "./api";
 const DEFAULT_MODEL =
@@ -246,18 +250,46 @@ function ChatShell({ user, setUser, onLogout }) {
   const [theme, setTheme] = useState(
     localStorage.getItem("novachat.theme") || "dark",
   );
+  const [fontSize, setFontSize] = useState(
+    Number(localStorage.getItem("novachat.fontSize") || 16),
+  );
   const [model, setModel] = useState(
     localStorage.getItem("novachat.model") || DEFAULT_MODEL,
   );
   const [error, setError] = useState("");
   const [abort, setAbort] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const bottom = useRef(null);
+  const scrollRef = useRef(null);
   const skipLoadRef = useRef(null);
+  const nearBottomRef = useRef(true);
+  const [showBottomButton, setShowBottomButton] = useState(false);
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
+    const root = document.documentElement;
+    const apply = () => {
+      const resolved =
+        theme === "system"
+          ? window.matchMedia("(prefers-color-scheme: light)").matches
+            ? "light"
+            : "dark"
+          : theme;
+      root.dataset.theme = resolved;
+    };
+    apply();
     localStorage.setItem("novachat.theme", theme);
+    if (theme === "system") {
+      const media = window.matchMedia("(prefers-color-scheme: light)");
+      media.addEventListener?.("change", apply);
+      return () => media.removeEventListener?.("change", apply);
+    }
   }, [theme]);
-  useEffect(() => localStorage.setItem("novachat.model", model), [model]);
+  useEffect(() => {
+    localStorage.setItem("novachat.model", model);
+  }, [model]);
+  useEffect(() => {
+    document.documentElement.style.setProperty("--chat-font-size", `${fontSize}px`);
+    localStorage.setItem("novachat.fontSize", String(fontSize));
+  }, [fontSize]);
   useEffect(() => {
     loadChats();
   }, []);
@@ -271,11 +303,30 @@ function ChatShell({ user, setUser, onLogout }) {
     } else setMessages([]);
   }, [chatId]);
   useEffect(() => {
-    bottom.current?.scrollIntoView({
-      behavior: sending ? "smooth" : "auto",
-      block: "end",
+    if (!nearBottomRef.current) return;
+    requestAnimationFrame(() => {
+      const el = scrollRef.current;
+      if (!el) return;
+      el.scrollTop = el.scrollHeight;
     });
   }, [messages, sending]);
+
+  function handleScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const near = distance <= 72;
+    nearBottomRef.current = near;
+    setShowBottomButton(!near && sending);
+  }
+
+  function scrollToBottom() {
+    const el = scrollRef.current;
+    if (!el) return;
+    nearBottomRef.current = true;
+    setShowBottomButton(false);
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }
   async function loadChats() {
     setLoadingChats(true);
     try {
@@ -304,14 +355,22 @@ function ChatShell({ user, setUser, onLogout }) {
     setMobile(false);
     setError("");
   }
-  async function del(id) {
-    if (!confirm("Delete this conversation?")) return;
+  function del(id) {
+    const target = chats.find((c) => String(c._id) === String(id));
+    if (target) setDeleteTarget(target);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    const id = deleteTarget._id;
     try {
       await api.deleteChat(id);
       setChats((x) => x.filter((c) => String(c._id) !== String(id)));
       if (String(chatId) === String(id)) nav("/chat");
     } catch (e) {
       setError(e.message);
+    } finally {
+      setDeleteTarget(null);
     }
   }
   async function send(content) {
@@ -535,17 +594,13 @@ function ChatShell({ user, setUser, onLogout }) {
             </div>
           </div>
           <div className="topright">
-            <div className="model">
-              <Zap size={12} />
-              {active?.model || model}
-              <ChevronDown size={12} />
-            </div>
-            <button className="ghost" onClick={() => setSettings(true)}>
+            <ThemeSwitcher theme={theme} setTheme={setTheme} />
+            <button className="ghost" onClick={() => setSettings(true)} title="Settings">
               <Settings />
             </button>
           </div>
         </header>
-        <div className="scroll">
+        <div ref={scrollRef} className="scroll" onScroll={handleScroll}>
           {error && (
             <div className="floating">
               <CircleAlert size={14} />
@@ -562,16 +617,23 @@ function ChatShell({ user, setUser, onLogout }) {
               {loadingMessages ? (
                 <MessageSkeleton />
               ) : (
-                messages.map((m) => <Message key={m._id} message={m} />)
+                messages.map((m) => <Message key={m._id} message={m} user={user} />)
               )}
               <div ref={bottom} />
             </div>
           )}
         </div>
+        {showBottomButton && (
+          <button className="to-bottom" onClick={scrollToBottom} aria-label="Scroll to latest message" title="Jump to latest">
+            <ArrowDown size={16} />
+          </button>
+        )}
         <Composer
           disabled={sending}
           onSend={send}
           onStop={() => abort?.abort()}
+          model={model}
+          setModel={setModel}
         />
         <div className="hint">
           <Command size={10} />
@@ -585,14 +647,27 @@ function ChatShell({ user, setUser, onLogout }) {
           user={user}
           theme={theme}
           setTheme={setTheme}
-          model={model}
-          setModel={setModel}
+          fontSize={fontSize}
+          setFontSize={setFontSize}
           onClose={() => setSettings(false)}
           onLogout={async () => {
             await api.logout();
             onLogout();
           }}
         />
+      )}
+      {deleteTarget && (
+        <div className="delete-modal" onMouseDown={(e) => e.target === e.currentTarget && setDeleteTarget(null)}>
+          <div className="delete-card">
+            <div className="delete-icon"><Trash2 size={19} /></div>
+            <h3>Delete conversation?</h3>
+            <p>This will permanently delete <b>{deleteTarget.topic || "this conversation"}</b>.</p>
+            <div className="delete-actions">
+              <button className="cancel" onClick={() => setDeleteTarget(null)}>Cancel</button>
+              <button className="danger" onClick={confirmDelete}>Delete</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -691,7 +766,7 @@ function Welcome({ model, onSend }) {
     </div>
   );
 }
-function Composer({ disabled, onSend, onStop }) {
+function Composer({ disabled, onSend, onStop, model, setModel }) {
   const [v, setV] = useState("");
   const ref = useRef(null);
   function resize() {
@@ -729,7 +804,10 @@ function Composer({ disabled, onSend, onStop }) {
           }}
         />
         <div className="composerbottom">
-          <span>{disabled ? "Nova is responding live" : "AI assistant"}</span>
+          <div className="composer-tools">
+            <ModelPicker model={model} setModel={setModel} />
+            <span className="composer-status">{disabled ? "Nova is responding live" : "AI assistant"}</span>
+          </div>
           <button
             className="send"
             disabled={!disabled && !v.trim()}
@@ -746,33 +824,80 @@ function Composer({ disabled, onSend, onStop }) {
     </div>
   );
 }
-function Message({ message }) {
-  const user = message.role === "user";
+function Message({ message, user }) {
+  const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const created = message.createdAt ? new Date(message.createdAt) : new Date();
+  const time = created.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  
+const messageTokens =
+  message?.usage?.totalTokens ??
+  message?.tokens ??
+  ((message?.usage?.promptTokens ?? 0) +
+    (message?.usage?.completionTokens ?? 0));
+  const totalAvailable = Math.max(
+    0,
+    (user?.usage?.tokenLimit || 0) - (user?.usage?.tokenUsed || 0),
+  );
+
   async function copy() {
     try {
       await navigator.clipboard.writeText(message.content || "");
       setCopied(true);
-      setTimeout(() => setCopied(false), 1000);
+      setTimeout(() => setCopied(false), 1200);
     } catch {}
   }
+
   return (
-    <article className="message">
-      <div className={`mavatar ${user ? "u" : "ai"}`}>
-        {user ? <User size={15} /> : <Sparkles size={15} />}
+    <article className={`message ${isUser ? "user-message" : "assistant-message"}`}>
+      <div className={`mavatar ${isUser ? "u" : "ai"}`}>
+        {isUser ? <User size={15} /> : <Sparkles size={15} />}
       </div>
       <div className="mbody">
         <div className="mhead">
-          <b>{user ? "You" : "Nova"}</b>
+          <b>{isUser ? "You" : "Nova"}</b>
           {message.streaming && (
-            <span className="generating">
-              <i /> generating
-            </span>
+            <span className="generating"><i /> generating</span>
           )}
         </div>
         <div className={`content ${message.error ? "bad" : ""}`}>
           {message.content ? (
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                table: ({ children }) => (
+                  <div className="md-table-wrap">
+                    <table className="md-table">{children}</table>
+                  </div>
+                ),
+                thead: ({ children }) => <thead>{children}</thead>,
+                tbody: ({ children }) => <tbody>{children}</tbody>,
+                tr: ({ children }) => <tr>{children}</tr>,
+                th: ({ children }) => <th>{children}</th>,
+                td: ({ children }) => <td>{children}</td>,
+                h1: ({ children }) => <h1 className="md-section-title">{children}</h1>,
+                h2: ({ children }) => <h2 className="md-section-title">{children}</h2>,
+                h3: ({ children }) => <h3 className="md-section-title">{children}</h3>,
+                blockquote: ({ children }) => <blockquote className="md-callout">{children}</blockquote>,
+                code: ({ inline, className, children, ...props }) => {
+                  const rawCode = String(children);
+                  // react-markdown v9 can leave `inline` undefined for inlineCode.
+                  // Treat backtick spans as inline unless the node is clearly a fenced
+                  // block (language class or a trailing newline). This is especially
+                  // important inside GFM tables, where inline code must stay inside
+                  // the cell instead of becoming a full-width code card.
+                  const isBlock = Boolean(className) || rawCode.endsWith("\n") || inline === false;
+                  const code = rawCode.replace(/\n$/, "");
+                  if (!isBlock) {
+                    return <code className="inline-code" {...props}>{children}</code>;
+                  }
+                  const language = (className || "").replace("language-", "") || "text";
+                  return <CodeBlock code={code} language={language} />;
+                },
+                pre: ({ children }) => <>{children}</>,
+              }}
+            >
               {message.content}
             </ReactMarkdown>
           ) : message.streaming ? (
@@ -780,16 +905,115 @@ function Message({ message }) {
           ) : null}
           {message.streaming && message.content && <span className="caret" />}
         </div>
-        {!user && message.content && !message.error && (
-          <button className="copy" onClick={copy}>
-            {copied ? <Check size={12} /> : <Copy size={12} />}{" "}
-            {copied ? "Copied" : "Copy"}
-          </button>
+
+        {message.content && !message.error && (
+          <div className="message-meta">
+            <span><Clock3 size={11} /> {time}</span>
+            {messageTokens > 0 && <span>{messageTokens.toLocaleString()} tokens</span>}
+            {totalAvailable > 0 && <span>{totalAvailable.toLocaleString()} left</span>}
+          </div>
+        )}
+
+        {message.content && !message.error && !message.streaming && (
+          <div className="message-actions">
+            <button className="action-icon" onClick={copy} title="Copy message" aria-label="Copy message">
+              {copied ? <Check size={14} /> : <Copy size={14} />}
+            </button>
+            <button className="action-icon" onClick={() => setShareOpen(true)} title="Share" aria-label="Share message">
+              <Share2 size={14} />
+            </button>
+          </div>
+        )}
+
+        {shareOpen && (
+          <div className="share-popover">
+            <Sparkles size={15} />
+            <span>Message sharing is coming soon.</span>
+            <button onClick={() => setShareOpen(false)}><X size={13} /></button>
+          </div>
         )}
       </div>
     </article>
   );
 }
+
+function CodeBlock({ code, language }) {
+  const [copied, setCopied] = useState(false);
+  async function copyCode() {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {}
+  }
+  return (
+    <div className="codeblock">
+      <div className="codehead">
+        <span>{language}</span>
+        <button onClick={copyCode} aria-label="Copy code">
+          {copied ? <Check size={14} /> : <Copy size={14} />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <pre><code dangerouslySetInnerHTML={{ __html: highlightCode(code, language) }} /></pre>
+    </div>
+  );
+}
+
+function highlightCode(code) {
+  const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  let x = esc(code);
+  x = x.replace(/(\/\/.*$|#.*$)/gm, '<span class="tok-com">$1</span>');
+  x = x.replace(/("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)/g, '<span class="tok-str">$1</span>');
+  x = x.replace(/\b(const|let|var|function|return|if|else|for|while|class|new|async|await|import|from|export|default|try|catch|throw|true|false|null|undefined|def|in|is|and|or|not|None|True|False|public|private|protected|static|void|int|string|boolean|interface|extends|implements|SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|CREATE|DROP|TABLE)\b/g, '<span class="tok-kw">$1</span>');
+  x = x.replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="tok-num">$1</span>');
+  return x;
+}
+
+function ModelPicker({ model, setModel }) {
+  const [open, setOpen] = useState(false);
+  const short = model.split("/").pop().replace(/:free$/i, "").replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return (
+    <div className={`composer-model ${open ? "open" : ""}`}>
+      <button className="composer-model-trigger" onClick={() => setOpen((x) => !x)} type="button">
+        <Zap size={12} />
+        <span>{short}</span>
+        <ChevronDown size={12} />
+      </button>
+      {open && (
+        <div className="model-popover">
+          <div className="model-popover-title">Model</div>
+          {MODELS.map((item) => (
+            <button key={item} className={item === model ? "selected" : ""} onClick={() => { setModel(item); setOpen(false); }}>
+              <span className="model-short">{item.split("/").pop().replace(/:free$/i, "").replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}</span>
+              <small>{item}</small>
+              {item === model && <Check size={14} />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ThemeSwitcher({ theme, setTheme }) {
+  const items = [
+    ["dark", Moon, "Dark"],
+    ["system", Monitor, "System"],
+    ["light", Sun, "Light"],
+  ];
+  return (
+    <div className="theme-switcher" role="group" aria-label="Theme">
+      <span className={`theme-knob ${theme}`} />
+      {items.map(([id, Icon, label]) => (
+        <button key={id} className={theme === id ? "active" : ""} onClick={() => setTheme(id)} title={label} aria-label={label}>
+          <Icon size={15} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function Typing() {
   return (
     <span className="typing">
@@ -816,8 +1040,8 @@ function SettingsDrawer({
   user,
   theme,
   setTheme,
-  model,
-  setModel,
+  fontSize,
+  setFontSize,
   onClose,
   onLogout,
 }) {
@@ -849,13 +1073,14 @@ function SettingsDrawer({
             ))}
           </div>
         </section>
-        <section>
-          <label>Model</label>
-          <select value={model} onChange={(e) => setModel(e.target.value)}>
-            {MODELS.map((x) => (
-              <option key={x}>{x}</option>
-            ))}
-          </select>
+        <section className="font-size-section">
+          <label>Chat font size</label>
+          <div className="font-size-row">
+            <span className="font-small">A</span>
+            <input type="range" min="14" max="20" step="1" value={fontSize} onChange={(e) => setFontSize(Number(e.target.value))} />
+            <span className="font-large">A</span>
+            <b>{fontSize}px</b>
+          </div>
         </section>
         <section className="acct">
           <div className="avatar">{(user.name || "U")[0]}</div>

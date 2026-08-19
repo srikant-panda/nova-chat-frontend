@@ -22,7 +22,7 @@ export async function streamMessage({content,chatId,model,onEvent,signal}){
     const h=new Headers({"Content-Type":"application/json","Accept":"text/event-stream","Cache-Control":"no-cache, no-store, max-age=0, must-revalidate","Pragma":"no-cache"});
     if(accessToken)h.set("Authorization",`Bearer ${accessToken}`);
     const path=chatId?`/message/${chatId}/stream`:`/message/stream`;
-    const r=await fetch(`${API}${path}?_=${Date.now()}-${Math.random().toString(36).slice(2)}`,{method:"POST",headers:h,credentials:"include",cache:"no-store",body:JSON.stringify({content,...(chatId?{}:{model})}),signal});
+    const r=await fetch(`${API}${path}?_=${Date.now()}-${Math.random().toString(36).slice(2)}`,{method:"POST",headers:h,credentials:"include",cache:"no-store",body:JSON.stringify({content,model}),signal});
     if(r.status===401&&retry){refreshPromise ||= refreshAccessToken();const ok=await refreshPromise;refreshPromise=null;if(ok)return attempt(false)}
     if(!r.ok){const d=await body(r);const e=new Error(d?.message||`Stream failed (${r.status})`);e.status=r.status;e.payload=d;throw e}
     if(!r.body)throw new Error("Streaming is not supported by this browser.");
