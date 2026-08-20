@@ -1,5 +1,9 @@
+const devHostApi =
+  typeof window !== "undefined" && window.location.port === "5173"
+    ? `${window.location.protocol}//${window.location.hostname}:3000/api`
+    : "";
 const API = (
-  import.meta.env.VITE_API_URL || "http://localhost:3000/api"
+  devHostApi || import.meta.env.VITE_API_URL || "http://localhost:3000/api"
 ).replace(/\/$/, "");
 let accessToken = sessionStorage.getItem("novachat.accessToken") || "";
 export const setAccessToken = (t) => {
