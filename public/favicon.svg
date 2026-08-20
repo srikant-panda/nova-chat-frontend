@@ -1,12 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <defs>
-    <linearGradient id="g" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#6d7cff"/>
-      <stop offset="1" stop-color="#9569ff"/>
-    </linearGradient>
-    <filter id="s"><feDropShadow dx="0" dy="4" stdDeviation="4" flood-opacity=".28"/></filter>
-  </defs>
-  <rect x="5" y="5" width="54" height="54" rx="16" fill="url(#g)" filter="url(#s)"/>
-  <path d="M32 14l3.4 10.6L46 28l-10.6 3.4L32 42l-3.4-10.6L18 28l10.6-3.4L32 14z" fill="white"/>
-  <path d="M46 39l1.7 5.3L53 46l-5.3 1.7L46 53l-1.7-5.3L39 46l5.3-1.7L46 39z" fill="white" opacity=".82"/>
+  <rect width="64" height="64" rx="16" fill="#07080b"/>
+  <circle cx="32" cy="32" r="17" fill="#4f8cff"/>
+  <path d="M18 30.5c7.2 4.2 20.1 4.3 28.2-.6M20.2 38.2c6.8 2.8 16.3 2.9 24.5-.1" fill="none" stroke="#f8fbff" stroke-width="2.8" stroke-linecap="round" opacity=".72"/>
+  <ellipse cx="32" cy="32" rx="28" ry="7.5" fill="none" stroke="#f8fbff" stroke-width="3" transform="rotate(-17 32 32)"/>
+  <ellipse cx="32" cy="32" rx="28" ry="7.5" fill="none" stroke="#07080b" stroke-width="3" stroke-dasharray="42 140" stroke-dashoffset="74" transform="rotate(-17 32 32)"/>
 </svg>
