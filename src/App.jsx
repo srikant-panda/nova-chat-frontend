@@ -59,6 +59,14 @@ const ACCENTS = [
   ["amber", "Amber", "#d99a20"],
   ["rose", "Rose", "#e45676"],
 ];
+
+function isInvalidChatRouteError(error) {
+  return (
+    error?.status === 404 ||
+    (error?.status === 400 && /chatid.*valid/i.test(error?.message || ""))
+  );
+}
+
 const CODE_LANGUAGE_ALIASES = {
   js: "javascript",
   jsx: "jsx",
@@ -483,8 +491,13 @@ function ChatShell({ user, setUser, onLogout, requestAuth }) {
     try {
       setMessages(await api.getMessages(id));
     } catch (e) {
-      setError(e.message);
-      if (e.status === 404) nav("/", { replace: true });
+      if (isInvalidChatRouteError(e)) {
+        setMessages([]);
+        setError("Chat not found.");
+        nav("/", { replace: true });
+      } else {
+        setError(e.message);
+      }
     } finally {
       setLoadingMessages(false);
     }
